@@ -236,7 +236,18 @@
           const kind=action.dataset.kind, id=action.dataset.id, act=action.dataset.action;
           const sb=getSupabaseClient();
           try{
-            if(act==="add-store"){
+            if(act==="exchange-rate"){
+              const currentRate=getExchangeRate();
+              const entered=prompt("عدّل سعر الصرف: كم ليرة لبنانية تساوي 1 دولار؟", String(currentRate));
+              if(entered===null)return;
+              const cleaned=String(entered).trim().replace(/[٬,،\s]/g,"");
+              const rate=Number(cleaned);
+              if(!Number.isFinite(rate)||rate<=0)throw new Error("سعر الصرف غير صحيح. أدخل رقماً أكبر من صفر، مثل 89500.");
+              localStorage.setItem("atallah_exchange_rate",String(rate));
+              showToast("تم حفظ سعر الصرف: 1$ = "+new Intl.NumberFormat("en-US").format(rate)+" ل.ل. على هذا الجهاز.");
+              await loadAdminTab("products");
+              return;
+            } else if(act==="add-store"){
               const {data:storeTypes,error:typeErr}=await sb.from("store_types").select("name").order("name"); if(typeErr)throw typeErr;
               const typeOptions=(storeTypes||[]).map(x=>({value:x.name,label:x.name}));
               if(!typeOptions.length)throw new Error("أضف نوع متجر أولاً من تبويب أنواع المتاجر.");

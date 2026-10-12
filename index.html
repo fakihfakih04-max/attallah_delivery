@@ -121,7 +121,6 @@
     $("#cartBtn").addEventListener("click",()=>{updateCart();openModal("cartModal")});
     $("#loginBtn").addEventListener("click",()=>openModal("loginModal"));$("#adminFooterBtn").addEventListener("click",()=>openModal("loginModal"));
     $("#trackBtn").addEventListener("click",()=>openModal("trackModal"));$("#orderHelpBtn").addEventListener("click",()=>openModal("trackModal"));
-    $("#helpBtn").addEventListener("click",()=>window.location.href="tel:+96181864550");
     $("#partnerBtn").addEventListener("click",()=>showToast("قريباً: التسجيل للمتاجر الشريكة."));
     $("#checkoutForm").addEventListener("submit",e=>{e.preventDefault();if(!cart.length){closeModal("checkoutModal");showToast("السلة فارغة.");return}const data=Object.fromEntries(new FormData(e.target).entries());const order={demoId:"AT-DEMO-"+Math.floor(10000+Math.random()*89999),items:cart.map(x=>({...x})),total:cart.reduce((n,x)=>n+x.price*x.qty,0),customer:data};closeModal("checkoutModal");cart=[];updateCart();e.target.reset();showToast("تمت تجربة الطلب بنجاح. لا يوجد إرسال فعلي قبل ربط الخادم.");console.info("Atallah demo order (not sent to a server):",order)});
     $("#loginForm").addEventListener("submit",e=>{e.preventDefault();closeModal("loginModal");e.target.reset();showToast("تسجيل الدخول غير مفعّل بعد. يجب ربطه بخادم آمن.");});

@@ -84,7 +84,7 @@
   <div class="modal-backdrop" id="storeModal" role="dialog" aria-modal="true" aria-labelledby="storeModalTitle"><div class="modal"><div class="modal-head"><h2 id="storeModalTitle">منتجات المتجر</h2><button class="close" data-close="storeModal" aria-label="إغلاق">×</button></div><p id="storeModalSub" style="color:#849098;font-size:12px;margin-top:-8px"></p><div class="product-grid" id="productGrid"></div></div></div>
   <div class="modal-backdrop" id="cartModal" role="dialog" aria-modal="true" aria-labelledby="cartTitle"><div class="modal"><div class="modal-head"><h2 id="cartTitle">سلة المشتريات</h2><button class="close" data-close="cartModal" aria-label="إغلاق">×</button></div><div id="cartContent"></div></div></div>
   <div class="modal-backdrop" id="checkoutModal" role="dialog" aria-modal="true" aria-labelledby="checkoutTitle"><div class="modal"><div class="modal-head"><h2 id="checkoutTitle">تأكيد الطلب</h2><button class="close" data-close="checkoutModal" aria-label="إغلاق">×</button></div><div class="notice">نسخة تجريبية للواجهة: الطلب لن يُرسل إلى متجر فعلي قبل ربط التطبيق بقاعدة البيانات والخادم.</div><form id="checkoutForm" class="checkout-form"><label class="field">الاسم الكامل<input name="name" required placeholder="اسمك"></label><label class="field">رقم الهاتف<input name="phone" required type="tel" placeholder="+961 ..." ></label><label class="field full">عنوان التوصيل<input name="address" required placeholder="المنطقة، الشارع، المبنى"></label><label class="field">طريقة الدفع<select name="payment" required><option value="كاش عند الاستلام">كاش عند الاستلام</option><option value="بطاقة مصرفية">بطاقة مصرفية</option><option value="محفظة إلكترونية">محفظة إلكترونية</option></select></label><label class="field">ملاحظات (اختياري)<input name="notes" placeholder="تفاصيل إضافية"></label><div class="field full"><button class="btn btn-primary" type="submit">تأكيد الطلب التجريبي ←</button></div></form></div></div>
-  <div class="modal-backdrop" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginTitle"><div class="modal" style="max-width:430px"><div class="modal-head"><h2 id="loginTitle">دخول الإدارة</h2><button class="close" data-close="loginModal" aria-label="إغلاق">×</button></div><div class="notice">واجهة أولية فقط. تسجيل الدخول الحقيقي والصلاحيات يحتاجان إلى Backend آمن.</div><form id="loginForm" class="checkout-form" style="grid-template-columns:1fr"><label class="field">البريد الإلكتروني<input name="email" type="email" required placeholder="admin@example.com"></label><label class="field">كلمة المرور<input name="password" type="password" required placeholder="كلمة المرور"></label><button class="btn btn-primary" type="submit">متابعة</button></form></div></div>
+  <div class="modal-backdrop" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginTitle"><div class="modal" style="max-width:430px"><div class="modal-head"><h2 id="loginTitle">دخول الإدارة</h2><button class="close" data-close="loginModal" aria-label="إغلاق">×</button></div><div class="notice">تسجيل الدخول عبر Supabase. إدارة البيانات تتطلب تسجيل الدخول بحساب أدمن مفعّل.</div><form id="loginForm" class="checkout-form" style="grid-template-columns:1fr"><label class="field">البريد الإلكتروني<input name="email" type="email" required placeholder="admin@example.com"></label><label class="field">كلمة المرور<input name="password" type="password" required placeholder="كلمة المرور"></label><button class="btn btn-primary" type="submit">متابعة</button></form></div></div>
   <div class="modal-backdrop" id="trackModal" role="dialog" aria-modal="true" aria-labelledby="trackTitle"><div class="modal" style="max-width:430px"><div class="modal-head"><h2 id="trackTitle">تتبّع طلبك</h2><button class="close" data-close="trackModal" aria-label="إغلاق">×</button></div><form id="trackForm" class="checkout-form" style="grid-template-columns:1fr"><label class="field">رقم الطلب<input name="orderId" required placeholder="مثال: AT-10025"></label><button class="btn btn-primary" type="submit">بحث عن الطلب</button></form><p style="font-size:11px;color:#8a959d">تتبّع الطلبات سيعمل بعد ربط النظام بالخادم.</p></div></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -134,18 +134,142 @@
       if(!supabaseClient) supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       return supabaseClient;
     }
+    function adminEscape(value){
+      return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+    }
     function showAdminDashboard(profile){
       let panel = document.getElementById("adminDashboardModal");
       if(!panel){
-        panel=document.createElement("div"); panel.id="adminDashboardModal"; panel.className="modal-backdrop"; panel.setAttribute("role","dialog"); panel.setAttribute("aria-modal","true");
-        panel.innerHTML=`<div class="modal"><div class="modal-head"><h2>لوحة إدارة عطالله</h2><button class="close" id="adminCloseBtn" aria-label="إغلاق">×</button></div><p id="adminWelcome" style="color:#73808a"></p><div class="product-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"><div class="product"><div class="product-emoji">👥</div><h4>المستخدمون والصلاحيات</h4><small>إدارة حسابات النظام — قيد التجهيز</small></div><div class="product"><div class="product-emoji">🏪</div><h4>المتاجر</h4><small>إدارة المتاجر — قيد التجهيز</small></div><div class="product"><div class="product-emoji">📦</div><h4>المنتجات</h4><small>إدارة المنتجات — قيد التجهيز</small></div><div class="product"><div class="product-emoji">🛵</div><h4>الطلبات</h4><small>متابعة الطلبات — قيد التجهيز</small></div></div><div class="notice">تم التحقق من تسجيل الدخول ودور الحساب من قاعدة البيانات. أقسام الإدارة ستحتاج سياسات RLS مخصصة قبل تفعيل عمليات الإضافة والتعديل والحذف.</div><button class="btn btn-primary" id="adminSignOutBtn">تسجيل الخروج</button></div>`;
+        panel=document.createElement("div");
+        panel.id="adminDashboardModal";
+        panel.className="modal-backdrop";
+        panel.setAttribute("role","dialog");
+        panel.setAttribute("aria-modal","true");
+        panel.innerHTML=`<div class="modal" style="width:min(1050px,100%)">
+          <div class="modal-head"><h2>لوحة إدارة عطالله</h2><button class="close" id="adminCloseBtn" aria-label="إغلاق">×</button></div>
+          <p id="adminWelcome" style="color:#73808a"></p>
+          <div class="filters" id="adminTabs">
+            <button class="filter active" data-admin-tab="stores">🏪 المتاجر</button>
+            <button class="filter" data-admin-tab="products">📦 المنتجات</button>
+            <button class="filter" data-admin-tab="orders">🛵 الطلبات</button>
+            <button class="filter" data-admin-tab="profiles">👥 المستخدمون</button>
+          </div>
+          <div id="adminMessage" class="notice" style="display:none"></div>
+          <div id="adminContent"><p>جارٍ تحميل البيانات…</p></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
+            <button class="btn btn-light" id="adminRefreshBtn">تحديث البيانات ↻</button>
+            <button class="btn btn-primary" id="adminSignOutBtn">تسجيل الخروج</button>
+          </div></div>`;
         document.body.appendChild(panel);
         panel.querySelector("#adminCloseBtn").addEventListener("click",()=>closeModal("adminDashboardModal"));
         panel.addEventListener("click",e=>{if(e.target===panel)closeModal("adminDashboardModal")});
-        panel.querySelector("#adminSignOutBtn").addEventListener("click",async()=>{try{const sb=getSupabaseClient();await sb.auth.signOut();closeModal("adminDashboardModal");showToast("تم تسجيل الخروج.");}catch(err){showToast(err.message||"تعذّر تسجيل الخروج.")}});
+        panel.querySelector("#adminSignOutBtn").addEventListener("click",async()=>{
+          try{const sb=getSupabaseClient();await sb.auth.signOut();closeModal("adminDashboardModal");showToast("تم تسجيل الخروج.");}
+          catch(err){showToast(err.message||"تعذّر تسجيل الخروج.");}
+        });
+        panel.querySelector("#adminRefreshBtn").addEventListener("click",()=>loadAdminTab(panel.dataset.activeTab||"stores"));
+        panel.querySelector("#adminTabs").addEventListener("click",e=>{
+          const b=e.target.closest("[data-admin-tab]"); if(!b)return;
+          panel.querySelectorAll("[data-admin-tab]").forEach(x=>x.classList.toggle("active",x===b));
+          loadAdminTab(b.dataset.adminTab);
+        });
+        panel.querySelector("#adminContent").addEventListener("click",async e=>{
+          const action=e.target.closest("[data-action]"); if(!action)return;
+          const kind=action.dataset.kind, id=action.dataset.id, act=action.dataset.action;
+          const sb=getSupabaseClient();
+          try{
+            if(act==="add-store"){
+              const name=prompt("اسم المتجر:"); if(!name||!name.trim())return;
+              const description=prompt("وصف المتجر (اختياري):")||"";
+              const address=prompt("عنوان المتجر (اختياري):")||"";
+              const {error}=await sb.from("stores").insert({name:name.trim(),description:description.trim()||null,address:address.trim()||null,is_active:true});
+              if(error)throw error;
+            } else if(act==="edit-store"){
+              const {data:row,error:readErr}=await sb.from("stores").select("name,description,address,is_active").eq("id",id).single(); if(readErr)throw readErr;
+              const name=prompt("اسم المتجر:",row.name); if(name===null)return; if(!name.trim())throw new Error("اسم المتجر مطلوب.");
+              const description=prompt("وصف المتجر:",row.description||""); if(description===null)return;
+              const address=prompt("العنوان:",row.address||""); if(address===null)return;
+              const {error}=await sb.from("stores").update({name:name.trim(),description:description.trim()||null,address:address.trim()||null}).eq("id",id); if(error)throw error;
+            } else if(act==="toggle-store"){
+              const active=action.dataset.active==="true";
+              const {error}=await sb.from("stores").update({is_active:!active}).eq("id",id); if(error)throw error;
+            } else if(act==="add-product"){
+              const {data:stores,error:se}=await sb.from("stores").select("id,name").order("name"); if(se)throw se;
+              if(!stores?.length)throw new Error("أضف متجراً أولاً.");
+              const choices=stores.map(s=>`${s.id} — ${s.name}`).join("\n");
+              const storeId=prompt("انسخ معرّف المتجر المطلوب من القائمة:\n"+choices); if(!storeId)return;
+              const store=stores.find(s=>s.id===storeId.trim()); if(!store)throw new Error("معرّف المتجر غير موجود بالقائمة.");
+              const name=prompt("اسم المنتج:"); if(!name||!name.trim())return;
+              const price=Number(prompt("السعر:", "0")); if(!Number.isFinite(price)||price<0)throw new Error("السعر غير صحيح.");
+              const stock=Number(prompt("الكمية بالمخزون:", "0")); if(!Number.isInteger(stock)||stock<0)throw new Error("الكمية يجب أن تكون عدداً صحيحاً غير سالب.");
+              const {error}=await sb.from("products").insert({store_id:store.id,name:name.trim(),price,stock,is_available:true}); if(error)throw error;
+            } else if(act==="edit-product"){
+              const {data:row,error:re}=await sb.from("products").select("name,price,stock,is_available").eq("id",id).single(); if(re)throw re;
+              const name=prompt("اسم المنتج:",row.name); if(name===null)return;
+              const price=Number(prompt("السعر:",String(row.price))); if(!Number.isFinite(price)||price<0)throw new Error("السعر غير صحيح.");
+              const stock=Number(prompt("المخزون:",String(row.stock))); if(!Number.isInteger(stock)||stock<0)throw new Error("المخزون يجب أن يكون عدداً صحيحاً غير سالب.");
+              const {error}=await sb.from("products").update({name:name.trim(),price,stock}).eq("id",id); if(error)throw error;
+            } else if(act==="toggle-product"){
+              const active=action.dataset.active==="true";
+              const {error}=await sb.from("products").update({is_available:!active}).eq("id",id); if(error)throw error;
+            } else if(act==="delete-product"){
+              if(!confirm("حذف المنتج نهائياً؟"))return;
+              const {error}=await sb.from("products").delete().eq("id",id); if(error)throw error;
+            } else if(act==="update-order"){
+              const status=prompt("الحالة الجديدة (pending, confirmed, preparing, out_for_delivery, delivered, cancelled):",action.dataset.status||"pending"); if(!status)return;
+              const allowed=["pending","confirmed","preparing","out_for_delivery","delivered","cancelled"];
+              if(!allowed.includes(status.trim()))throw new Error("حالة غير معروفة. استخدم إحدى الحالات المعروضة.");
+              const {error}=await sb.from("orders").update({status:status.trim()}).eq("id",id); if(error)throw error;
+            } else if(act==="update-profile"){
+              const {data:row,error:re}=await sb.from("profiles").select("role,is_active,full_name").eq("id",id).single(); if(re)throw re;
+              if(id=== (await sb.auth.getUser()).data.user.id)throw new Error("لا يمكنك تعديل حساب الأدمن الحالي من هنا.");
+              const role=prompt("الدور (admin, store, delivery, customer):",row.role); if(role===null)return;
+              if(!["admin","store","delivery","customer"].includes(role.trim()))throw new Error("الدور غير صحيح.");
+              const active=confirm("هل تريد أن يكون الحساب مفعّلاً؟ اضغط إلغاء لتعطيله.");
+              const {error}=await sb.from("profiles").update({role:role.trim(),is_active:active}).eq("id",id); if(error)throw error;
+            }
+            showAdminMessage(panel,"تم حفظ التغيير بنجاح.",false);
+            await loadAdminTab(panel.dataset.activeTab||"stores");
+          }catch(err){showAdminMessage(panel,err.message||"تعذّر تنفيذ العملية. تحقق من صلاحيات RLS.",true);}
+        });
       }
       panel.querySelector("#adminWelcome").textContent=`أهلاً ${profile.full_name || "بالمدير"} — الدور: ${profile.role}`;
+      panel.dataset.activeTab=panel.dataset.activeTab||"stores";
       openModal("adminDashboardModal");
+      loadAdminTab(panel.dataset.activeTab);
+    }
+    function showAdminMessage(panel,message,isError){
+      const el=panel.querySelector("#adminMessage");el.textContent=message;el.style.display="block";
+      el.style.background=isError?"#fff0f0":"#eaf8f0";el.style.color=isError?"#a32020":"#176b45";
+    }
+    async function loadAdminTab(tab){
+      const panel=document.getElementById("adminDashboardModal"); if(!panel)return;
+      panel.dataset.activeTab=tab;
+      const content=panel.querySelector("#adminContent");content.innerHTML="<p>جارٍ تحميل البيانات…</p>";
+      try{
+        const sb=getSupabaseClient();let data,error;
+        if(tab==="stores"){
+          ({data,error}=await sb.from("stores").select("id,name,description,address,is_active,created_at").order("created_at",{ascending:false}));
+          if(error)throw error;
+          content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>إدارة المتاجر (${data.length})</h3><button class="btn btn-primary" data-action="add-store">＋ إضافة متجر</button></div>`+
+          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:620px"><thead><tr><th style="text-align:right;padding:10px">المتجر</th><th style="text-align:right;padding:10px">العنوان</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.name)}<br><small>${adminEscape(r.description||"")}</small></td><td style="padding:10px">${adminEscape(r.address||"—")}</td><td style="padding:10px">${r.is_active?"نشط":"متوقف"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-store" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-store" data-id="${adminEscape(r.id)}" data-active="${r.is_active}">${r.is_active?"إيقاف":"تفعيل"}</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في متاجر بعد. اضغط إضافة متجر.</p>`);
+        }else if(tab==="products"){
+          ({data,error}=await sb.from("products").select("id,store_id,name,price,stock,is_available,stores(name)").order("created_at",{ascending:false}));
+          if(error)throw error;
+          content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>إدارة المنتجات (${data.length})</h3><button class="btn btn-primary" data-action="add-product">＋ إضافة منتج</button></div>`+
+          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:650px"><thead><tr><th style="text-align:right;padding:10px">المنتج</th><th style="text-align:right;padding:10px">المتجر</th><th style="padding:10px">السعر</th><th style="padding:10px">المخزون</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.name)}</td><td style="padding:10px">${adminEscape(r.stores?.name||"—")}</td><td style="padding:10px">${money(r.price)}</td><td style="padding:10px">${r.stock}</td><td style="padding:10px">${r.is_available?"متاح":"غير متاح"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-product" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-product" data-id="${adminEscape(r.id)}" data-active="${r.is_available}">${r.is_available?"إخفاء":"إظهار"}</button> <button class="btn btn-light" data-action="delete-product" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في منتجات بعد. اضغط إضافة منتج.</p>`);
+        }else if(tab==="orders"){
+          ({data,error}=await sb.from("orders").select("id,customer_name,customer_phone,delivery_address,payment_method,total,status,created_at,store_id").order("created_at",{ascending:false}).limit(100));
+          if(error)throw error;
+          content.innerHTML=`<h3>الطلبات (آخر ${data.length} طلب)</h3>`+(data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:760px"><thead><tr><th style="padding:10px">الزبون</th><th style="padding:10px">العنوان</th><th style="padding:10px">الدفع</th><th style="padding:10px">المجموع</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراء</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.customer_name)}<br><small>${adminEscape(r.customer_phone)}</small></td><td style="padding:10px">${adminEscape(r.delivery_address)}</td><td style="padding:10px">${adminEscape(r.payment_method)}</td><td style="padding:10px">${money(r.total)}</td><td style="padding:10px">${adminEscape(r.status)}</td><td style="padding:10px"><button class="btn btn-light" data-action="update-order" data-id="${adminEscape(r.id)}" data-status="${adminEscape(r.status)}">تحديث الحالة</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في طلبات محفوظة بعد.</p>`);
+        }else if(tab==="profiles"){
+          ({data,error}=await sb.from("profiles").select("id,full_name,phone,role,is_active,created_at").order("created_at",{ascending:false}));
+          if(error)throw error;
+          content.innerHTML=`<h3>المستخدمون والصلاحيات (${data.length})</h3><p class="notice">هذه الشاشة تدير الأدوار الموجودة في profiles فقط. إنشاء حساب تسجيل دخول جديد يتطلب دعوة آمنة عبر Supabase Auth.</p>`+(data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:650px"><thead><tr><th style="padding:10px">الاسم</th><th style="padding:10px">الهاتف</th><th style="padding:10px">الدور</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراء</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.full_name)}</td><td style="padding:10px">${adminEscape(r.phone||"—")}</td><td style="padding:10px">${adminEscape(r.role)}</td><td style="padding:10px">${r.is_active?"مفعّل":"معطّل"}</td><td style="padding:10px"><button class="btn btn-light" data-action="update-profile" data-id="${adminEscape(r.id)}">تعديل الدور</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">لا يوجد مستخدمون.</p>`);
+        }
+      }catch(err){
+        content.innerHTML=`<div class="notice" style="color:#a32020;background:#fff0f0">تعذّر تحميل البيانات: ${adminEscape(err.message||"خطأ غير معروف")}<br>تأكد من السياسات وصلاحيات الجدول.</div>`;
+      }
     }
     $("#loginForm").addEventListener("submit",async e=>{
       e.preventDefault(); const form=e.currentTarget; const submit=form.querySelector('button[type="submit"]');

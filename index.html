@@ -114,10 +114,15 @@
     function renderStores(){
       const term=$("#searchInput").value.trim().toLowerCase();
       const filtered=stores.filter(s=>(activeCategory==="الكل"||s.category===activeCategory)&&(`${s.name} ${s.category} ${s.desc}`).toLowerCase().includes(term));
-      $("#storesGrid").innerHTML=filtered.length?filtered.map(s=>`<article class="store-card" tabindex="0" role="button" aria-label="افتح ${s.name}" data-store="${s.id}"><div class="store-cover" style="background:${s.color}"><span class="store-badge">${s.badge}</span><span class="store-emoji">${s.emoji}</span></div><div class="store-info"><div class="store-title-row"><h3>${s.name}</h3><span class="rating">★ ${s.rating}</span></div><p>${s.desc}</p><div class="store-meta"><span>◷ ${s.time}</span><b>شاهد المنتجات ←</b></div></div></article>`).join(""):`<div class="empty">ما لقينا متاجر مطابقة لبحثك. جرّب كلمة ثانية.</div>`;
-      document.querySelectorAll("[data-store]").forEach(card=>{const fn=()=>openStore(Number(card.dataset.store));card.addEventListener("click",fn);card.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fn()}})});
+      $("#storesGrid").innerHTML=filtered.length?filtered.map(s=>`<article class="store-card" tabindex="0" role="button" aria-label="افتح ${s.name}" data-store="${s.id}"><div class="store-cover" style="background:${s.color}"><span class="store-badge">${s.badge}</span>${s.image_url?`<img src="${adminEscape(s.image_url)}" alt="${adminEscape(s.name)}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0">`:`<span class="store-emoji">${s.emoji}</span>`}</div><div class="store-info"><div class="store-title-row"><h3>${s.name}</h3><span class="rating">★ ${s.rating}</span></div><p>${s.desc}</p><div class="store-meta"><span>◷ ${s.time}</span><b>شاهد المنتجات ←</b></div></div></article>`).join(""):`<div class="empty">ما لقينا متاجر مطابقة لبحثك. جرّب كلمة ثانية.</div>`;
+      document.querySelectorAll("[data-store]").forEach(card=>{const fn=()=>openStore(card.dataset.store);card.addEventListener("click",fn);card.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fn()}})});
     }
-    function openStore(id){activeStore=stores.find(s=>s.id===id);if(!activeStore)return;$("#storeModalTitle").textContent=activeStore.name;$("#storeModalSub").textContent=`${activeStore.desc} • ★ ${activeStore.rating} • ${activeStore.time}`;$("#productGrid").innerHTML=activeStore.products.map((p,i)=>`<div class="product"><div class="product-emoji">${p[1]}</div><h4>${p[0]}</h4><small>${activeStore.name}</small><div class="product-bottom"><span class="price">${money(p[2])}</span><button class="add" data-add="${i}" aria-label="أضف ${p[0]}">+</button></div></div>`).join("");$("#productGrid").querySelectorAll("[data-add]").forEach(b=>b.addEventListener("click",()=>addToCart(activeStore,Number(b.dataset.add))));openModal("storeModal")}
+    async function openStore(id){activeStore=stores.find(s=>String(s.id)===String(id));if(!activeStore)return;
+      if(activeStore.isDatabaseStore){
+        try{const sb=getSupabaseClient();const {data,error}=await sb.from("products").select("id,name,category,price,image_url,stock").eq("store_id",activeStore.id).eq("is_available",true).order("created_at",{ascending:false});if(error)throw error;activeStore.products=(data||[]).map(p=>[p.name,p.image_url||"🛍️",Number(p.price),p.id,p.category]);}
+        catch(err){showToast("تعذّر تحميل المنتجات: "+err.message);return;}
+      }
+      $("#storeModalTitle").textContent=activeStore.name;$("#storeModalSub").textContent=`${activeStore.desc} • ${activeStore.time}`;$("#productGrid").innerHTML=activeStore.products.map((p,i)=>`<div class="product"><div class="product-emoji">${String(p[1]||"").startsWith("http")?`<img src="${adminEscape(p[1])}" alt="${adminEscape(p[0])}" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`:p[1]}</div><h4>${adminEscape(p[0])}</h4><small>${activeStore.name}</small><div class="product-bottom"><span class="price">${money(p[2])}</span><button class="add" data-add="${i}" aria-label="أضف ${p[0]}">+</button></div></div>`).join("");$("#productGrid").querySelectorAll("[data-add]").forEach(b=>b.addEventListener("click",()=>addToCart(activeStore,Number(b.dataset.add))));openModal("storeModal")}
     function addToCart(store,index){if(cart.length&&cart.some(x=>x.storeId!==store.id)){showToast("كل طلب لازم يكون من متجر واحد. أفرغ السلة أو أكمل الطلب الحالي أولاً.");return}const p=store.products[index];const found=cart.find(x=>x.storeId===store.id&&x.name===p[0]);if(found)found.qty++;else cart.push({storeId:store.id,storeName:store.name,name:p[0],emoji:String(p[1]||"").startsWith("http")?"🛍️":p[1],price:p[2],qty:1});updateCart();showToast(`تمت إضافة ${p[0]} إلى السلة`)}
     function updateCart(){$("#cartCount").textContent=cart.reduce((n,x)=>n+x.qty,0);$("#cartContent").innerHTML=cart.length?`<div class="cart-list">${cart.map((x,i)=>`<div class="cart-row"><div class="pemoji">${x.emoji}</div><div class="pdesc"><strong>${x.name}</strong><small>${x.storeName} • ${money(x.price)} × ${x.qty}</small></div><strong>${money(x.price*x.qty)}</strong><button data-remove="${i}">حذف</button></div>`).join("")}</div><div class="cart-total"><span>المجموع الفرعي</span><span>${money(cart.reduce((n,x)=>n+x.price*x.qty,0))}</span></div><button class="btn btn-primary" id="checkoutBtn" style="width:100%">متابعة إلى الدفع ←</button>`:`<div class="empty">🛒<br>سلتك فاضية حالياً.<br>اختار متجر وبلّش أضف منتجاتك.</div>`;$("#cartContent").querySelectorAll("[data-remove]").forEach(b=>b.addEventListener("click",()=>{cart.splice(Number(b.dataset.remove),1);updateCart()}));const cb=$("#checkoutBtn");if(cb)cb.addEventListener("click",()=>{closeModal("cartModal");openModal("checkoutModal")})}
     $("#filters").querySelectorAll(".filter").forEach(b=>b.addEventListener("click",()=>{activeCategory=b.dataset.category;$("#filters").querySelectorAll(".filter").forEach(x=>x.classList.toggle("active",x===b));renderStores()}));
@@ -182,14 +187,18 @@
               const name=prompt("اسم المتجر:"); if(!name||!name.trim())return;
               const description=prompt("وصف المتجر (اختياري):")||"";
               const address=prompt("عنوان المتجر (اختياري):")||"";
-              const {error}=await sb.from("stores").insert({name:name.trim(),description:description.trim()||null,address:address.trim()||null,is_active:true});
+              const category=prompt("نوع المتجر (مثلاً: سوبرماركت، مطعم، مخبز):")||"متاجر";
+              const image_url=prompt("رابط صورة المتجر (https://):")||"";
+              const {error}=await sb.from("stores").insert({name:name.trim(),description:description.trim()||null,address:address.trim()||null,category:category.trim()||"متاجر",image_url:image_url.trim()||null,is_active:true});
               if(error)throw error;
             } else if(act==="edit-store"){
-              const {data:row,error:readErr}=await sb.from("stores").select("name,description,address,is_active").eq("id",id).single(); if(readErr)throw readErr;
+              const {data:row,error:readErr}=await sb.from("stores").select("name,description,address,image_url,category,is_active").eq("id",id).single(); if(readErr)throw readErr;
               const name=prompt("اسم المتجر:",row.name); if(name===null)return; if(!name.trim())throw new Error("اسم المتجر مطلوب.");
               const description=prompt("وصف المتجر:",row.description||""); if(description===null)return;
               const address=prompt("العنوان:",row.address||""); if(address===null)return;
-              const {error}=await sb.from("stores").update({name:name.trim(),description:description.trim()||null,address:address.trim()||null}).eq("id",id); if(error)throw error;
+              const category=prompt("نوع المتجر:",row.category||"متاجر"); if(category===null)return;
+              const image_url=prompt("رابط صورة المتجر (https://):",row.image_url||""); if(image_url===null)return;
+              const {error}=await sb.from("stores").update({name:name.trim(),description:description.trim()||null,address:address.trim()||null,category:category.trim()||"متاجر",image_url:image_url.trim()||null}).eq("id",id); if(error)throw error;
             } else if(act==="toggle-store"){
               const active=action.dataset.active==="true";
               const {error}=await sb.from("stores").update({is_active:!active}).eq("id",id); if(error)throw error;
@@ -200,15 +209,19 @@
               const storeId=prompt("انسخ معرّف المتجر المطلوب من القائمة:\n"+choices); if(!storeId)return;
               const store=stores.find(s=>s.id===storeId.trim()); if(!store)throw new Error("معرّف المتجر غير موجود بالقائمة.");
               const name=prompt("اسم المنتج:"); if(!name||!name.trim())return;
+              const category=prompt("نوع / فئة المنتج:")||"عام";
+              const image_url=prompt("رابط صورة المنتج (https://):")||"";
               const price=Number(prompt("السعر:", "0")); if(!Number.isFinite(price)||price<0)throw new Error("السعر غير صحيح.");
               const stock=Number(prompt("الكمية بالمخزون:", "0")); if(!Number.isInteger(stock)||stock<0)throw new Error("الكمية يجب أن تكون عدداً صحيحاً غير سالب.");
-              const {error}=await sb.from("products").insert({store_id:store.id,name:name.trim(),price,stock,is_available:true}); if(error)throw error;
+              const {error}=await sb.from("products").insert({store_id:store.id,name:name.trim(),category:category.trim()||"عام",image_url:image_url.trim()||null,price,stock,is_available:true}); if(error)throw error;
             } else if(act==="edit-product"){
-              const {data:row,error:re}=await sb.from("products").select("name,price,stock,is_available").eq("id",id).single(); if(re)throw re;
+              const {data:row,error:re}=await sb.from("products").select("name,category,image_url,price,stock,is_available").eq("id",id).single(); if(re)throw re;
               const name=prompt("اسم المنتج:",row.name); if(name===null)return;
+              const category=prompt("نوع / فئة المنتج:",row.category||"عام"); if(category===null)return;
+              const image_url=prompt("رابط صورة المنتج:",row.image_url||""); if(image_url===null)return;
               const price=Number(prompt("السعر:",String(row.price))); if(!Number.isFinite(price)||price<0)throw new Error("السعر غير صحيح.");
               const stock=Number(prompt("المخزون:",String(row.stock))); if(!Number.isInteger(stock)||stock<0)throw new Error("المخزون يجب أن يكون عدداً صحيحاً غير سالب.");
-              const {error}=await sb.from("products").update({name:name.trim(),price,stock}).eq("id",id); if(error)throw error;
+              const {error}=await sb.from("products").update({name:name.trim(),category:category.trim()||"عام",image_url:image_url.trim()||null,price,stock}).eq("id",id); if(error)throw error;
             } else if(act==="toggle-product"){
               const active=action.dataset.active==="true";
               const {error}=await sb.from("products").update({is_available:!active}).eq("id",id); if(error)throw error;
@@ -249,15 +262,15 @@
       try{
         const sb=getSupabaseClient();let data,error;
         if(tab==="stores"){
-          ({data,error}=await sb.from("stores").select("id,name,description,address,is_active,created_at").order("created_at",{ascending:false}));
+          ({data,error}=await sb.from("stores").select("id,name,description,address,image_url,category,is_active,created_at").order("created_at",{ascending:false}));
           if(error)throw error;
           content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>إدارة المتاجر (${data.length})</h3><button class="btn btn-primary" data-action="add-store">＋ إضافة متجر</button></div>`+
-          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:620px"><thead><tr><th style="text-align:right;padding:10px">المتجر</th><th style="text-align:right;padding:10px">العنوان</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.name)}<br><small>${adminEscape(r.description||"")}</small></td><td style="padding:10px">${adminEscape(r.address||"—")}</td><td style="padding:10px">${r.is_active?"نشط":"متوقف"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-store" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-store" data-id="${adminEscape(r.id)}" data-active="${r.is_active}">${r.is_active?"إيقاف":"تفعيل"}</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في متاجر بعد. اضغط إضافة متجر.</p>`);
+          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:620px"><thead><tr><th style="text-align:right;padding:10px">المتجر</th><th style="text-align:right;padding:10px">العنوان</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${r.image_url?`<img src="${adminEscape(r.image_url)}" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:10px;vertical-align:middle;margin-left:8px">`:""}${adminEscape(r.name)}<br><small>${adminEscape(r.category||"متاجر")} · ${adminEscape(r.description||"")}</small></td><td style="padding:10px">${adminEscape(r.address||"—")}</td><td style="padding:10px">${r.is_active?"نشط":"متوقف"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-store" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-store" data-id="${adminEscape(r.id)}" data-active="${r.is_active}">${r.is_active?"إيقاف":"تفعيل"}</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في متاجر بعد. اضغط إضافة متجر.</p>`);
         }else if(tab==="products"){
-          ({data,error}=await sb.from("products").select("id,store_id,name,price,stock,is_available,stores(name)").order("created_at",{ascending:false}));
+          ({data,error}=await sb.from("products").select("id,store_id,name,category,image_url,price,stock,is_available,stores(name)").order("created_at",{ascending:false}));
           if(error)throw error;
           content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>إدارة المنتجات (${data.length})</h3><button class="btn btn-primary" data-action="add-product">＋ إضافة منتج</button></div>`+
-          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:650px"><thead><tr><th style="text-align:right;padding:10px">المنتج</th><th style="text-align:right;padding:10px">المتجر</th><th style="padding:10px">السعر</th><th style="padding:10px">المخزون</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.name)}</td><td style="padding:10px">${adminEscape(r.stores?.name||"—")}</td><td style="padding:10px">${money(r.price)}</td><td style="padding:10px">${r.stock}</td><td style="padding:10px">${r.is_available?"متاح":"غير متاح"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-product" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-product" data-id="${adminEscape(r.id)}" data-active="${r.is_available}">${r.is_available?"إخفاء":"إظهار"}</button> <button class="btn btn-light" data-action="delete-product" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في منتجات بعد. اضغط إضافة منتج.</p>`);
+          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:650px"><thead><tr><th style="text-align:right;padding:10px">المنتج</th><th style="text-align:right;padding:10px">المتجر</th><th style="padding:10px">السعر</th><th style="padding:10px">المخزون</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${r.image_url?`<img src="${adminEscape(r.image_url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:9px;vertical-align:middle;margin-left:8px">`:""}${adminEscape(r.name)}<br><small>${adminEscape(r.category||"عام")}</small></td><td style="padding:10px">${adminEscape(r.stores?.name||"—")}</td><td style="padding:10px">${money(r.price)}</td><td style="padding:10px">${r.stock}</td><td style="padding:10px">${r.is_available?"متاح":"غير متاح"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-product" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-product" data-id="${adminEscape(r.id)}" data-active="${r.is_available}">${r.is_available?"إخفاء":"إظهار"}</button> <button class="btn btn-light" data-action="delete-product" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في منتجات بعد. اضغط إضافة منتج.</p>`);
         }else if(tab==="orders"){
           ({data,error}=await sb.from("orders").select("id,customer_name,customer_phone,delivery_address,payment_method,total,status,created_at,store_id").order("created_at",{ascending:false}).limit(100));
           if(error)throw error;
@@ -291,7 +304,20 @@
       finally{submit.disabled=false;submit.textContent="متابعة";}
     });
     $("#trackForm").addEventListener("submit",e=>{e.preventDefault();closeModal("trackModal");e.target.reset();showToast("التتبع غير متصل بعد بقاعدة الطلبات.");});
-    $("#year").textContent=new Date().getFullYear();renderStores();updateCart();
+
+    async function loadPublicStoresFromSupabase(){
+      try{
+        const sb=getSupabaseClient();
+        const {data,error}=await sb.from("stores").select("id,name,category,description,address,image_url,is_active").eq("is_active",true).order("created_at",{ascending:false});
+        if(error)throw error;
+        if(!data || !data.length)return;
+        stores.splice(0,stores.length,...data.map(r=>({id:r.id,name:r.name,category:r.category||"متاجر",desc:r.description||r.address||"اكتشف منتجات المتجر",emoji:"🏪",rating:"—",time:"حسب المتجر",fee:"تُحدد لاحقاً",color:"linear-gradient(135deg,#fff0e2,#ffe0c5)",badge:"متاح",image_url:r.image_url||"",products:[],isDatabaseStore:true})));
+        activeCategory="الكل";
+        renderStores();
+      }catch(err){console.warn("تعذر تحميل المتاجر من Supabase:",err.message);}
+    }
+
+    $("#year").textContent=new Date().getFullYear();renderStores();updateCart();loadPublicStoresFromSupabase();
   </script>
 </body>
 </html>

@@ -234,9 +234,12 @@
           const sb=getSupabaseClient();
           try{
             if(act==="add-store"){
+              const {data:storeTypes,error:typeErr}=await sb.from("store_types").select("name").order("name"); if(typeErr)throw typeErr;
+              const typeOptions=(storeTypes||[]).map(x=>({value:x.name,label:x.name}));
+              if(!typeOptions.length)throw new Error("أضف نوع متجر أولاً من تبويب أنواع المتاجر.");
               const form=await openAdminForm("إضافة متجر جديد",[
                 {key:"name",label:"اسم المتجر",required:true},
-                {key:"category",label:"نوع المتجر",required:true,defaultValue:"سوبرماركت"},
+                {key:"category",label:"نوع المتجر",type:"select",options:typeOptions,required:true,defaultValue:typeOptions[0].value},
                 {key:"description",label:"وصف المتجر",type:"textarea"},
                 {key:"address",label:"العنوان"},
                 {key:"image",label:"صورة المتجر",type:"image"}
@@ -248,12 +251,24 @@
               if(error)throw error;
             } else if(act==="edit-store"){
               const {data:row,error:readErr}=await sb.from("stores").select("name,description,address,image_url,category,is_active").eq("id",id).single(); if(readErr)throw readErr;
-              const name=prompt("اسم المتجر:",row.name); if(name===null)return; if(!name.trim())throw new Error("اسم المتجر مطلوب.");
-              const description=prompt("وصف المتجر:",row.description||""); if(description===null)return;
-              const address=prompt("العنوان:",row.address||""); if(address===null)return;
-              const category=prompt("نوع المتجر:",row.category||"متاجر"); if(category===null)return;
-              const image_url=await chooseAndUploadImage(sb,"stores",row.image_url||"");
-              const {error}=await sb.from("stores").update({name:name.trim(),description:description.trim()||null,address:address.trim()||null,category:category.trim()||"متاجر",image_url:image_url||null}).eq("id",id); if(error)throw error;
+              const {data:storeTypes,error:typeErr}=await sb.from("store_types").select("name").order("name"); if(typeErr)throw typeErr;
+              const typeOptions=(storeTypes||[]).map(x=>({value:x.name,label:x.name}));
+              if(row.category&&!typeOptions.some(x=>x.value===row.category))typeOptions.push({value:row.category,label:row.category});
+              if(!typeOptions.length)throw new Error("أضف نوع متجر أولاً من تبويب أنواع المتاجر.");
+              const form=await openAdminForm("تعديل المتجر",[
+                {key:"name",label:"اسم المتجر",required:true},
+                {key:"category",label:"نوع المتجر",type:"select",options:typeOptions,required:true},
+                {key:"description",label:"وصف المتجر",type:"textarea"},
+                {key:"address",label:"العنوان"},
+                {key:"image",label:"صورة المتجر",type:"image"}
+              ],{...row,image:row.image_url||""});
+              if(!form)return;
+              if(!form.name.trim())throw new Error("اسم المتجر مطلوب.");
+              const image_url=await uploadSelectedImage(sb,"stores",form.image,row.image_url||"");
+              const {error}=await sb.from("stores").update({name:form.name.trim(),description:form.description.trim()||null,address:form.address.trim()||null,category:form.category,image_url:image_url||null}).eq("id",id); if(error)throw error;
+            } else if(act==="delete-store"){
+              if(!confirm("حذف المتجر نهائياً؟ قد يتعذّر الحذف إذا كان مرتبطاً بطلبات موجودة."))return;
+              const {error}=await sb.from("stores").delete().eq("id",id); if(error)throw new Error("تعذّر حذف المتجر: "+error.message);
             } else if(act==="toggle-store"){
               const active=action.dataset.active==="true";
               const {error}=await sb.from("stores").update({is_active:!active}).eq("id",id); if(error)throw error;
@@ -357,7 +372,7 @@
           ({data,error}=await sb.from("stores").select("id,name,description,address,image_url,category,is_active,created_at").order("created_at",{ascending:false}));
           if(error)throw error;
           content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>إدارة المتاجر (${data.length})</h3><button class="btn btn-primary" data-action="add-store">＋ إضافة متجر</button></div>`+
-          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:620px"><thead><tr><th style="text-align:right;padding:10px">المتجر</th><th style="text-align:right;padding:10px">العنوان</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${r.image_url?`<img src="${adminEscape(r.image_url)}" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:10px;vertical-align:middle;margin-left:8px">`:""}${adminEscape(r.name)}<br><small>${adminEscape(r.category||"متاجر")} · ${adminEscape(r.description||"")}</small></td><td style="padding:10px">${adminEscape(r.address||"—")}</td><td style="padding:10px">${r.is_active?"نشط":"متوقف"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-store" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-store" data-id="${adminEscape(r.id)}" data-active="${r.is_active}">${r.is_active?"إيقاف":"تفعيل"}</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في متاجر بعد. اضغط إضافة متجر.</p>`);
+          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:620px"><thead><tr><th style="text-align:right;padding:10px">المتجر</th><th style="text-align:right;padding:10px">العنوان</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${r.image_url?`<img src="${adminEscape(r.image_url)}" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:10px;vertical-align:middle;margin-left:8px">`:""}${adminEscape(r.name)}<br><small>${adminEscape(r.category||"متاجر")} · ${adminEscape(r.description||"")}</small></td><td style="padding:10px">${adminEscape(r.address||"—")}</td><td style="padding:10px">${r.is_active?"نشط":"متوقف"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-store" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-store" data-id="${adminEscape(r.id)}" data-active="${r.is_active}">${r.is_active?"إيقاف":"تفعيل"}</button> <button class="btn btn-light" data-action="delete-store" data-id="${adminEscape(r.id)}" style="color:#b42318;border-color:#f2b8b5">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في متاجر بعد. اضغط إضافة متجر.</p>`);
         }else if(tab==="products"){
           ({data,error}=await sb.from("products").select("id,store_id,name,store_type,group_name,category,image_url,price,stock,is_available,stores(name)").order("created_at",{ascending:false}));
           if(error)throw error;

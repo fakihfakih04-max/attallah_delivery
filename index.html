@@ -169,6 +169,7 @@
           const val=adminEscape(current[f.key] ?? f.defaultValue ?? "");
           if(f.type==="textarea") return `<label style="display:block;margin:12px 0;font-weight:700">${f.label}<textarea name="${f.key}" ${f.required?"required":""} rows="3" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:11px;border:1px solid #ccd5df;border-radius:10px">${val}</textarea></label>`;
           if(f.type==="image") return `<div style="margin:14px 0"><label style="font-weight:700;display:block">${f.label}</label><input name="${f.key}" type="file" accept="image/*" style="display:block;width:100%;margin-top:8px"><small style="color:#667085">اختار صورة من الهاتف أو اللابتوب (حتى 5 MB)</small>${current[f.key]?`<img src="${adminEscape(current[f.key])}" style="display:block;width:90px;height:90px;object-fit:cover;border-radius:10px;margin-top:8px">`:""}</div>`;
+          if(f.type==="select") return `<label style="display:block;margin:12px 0;font-weight:700">${f.label}<select name="${f.key}" ${f.required?"required":""} style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:11px;border:1px solid #ccd5df;border-radius:10px;background:#fff">${(f.options||[]).map(o=>`<option value="${adminEscape(o.value)}" ${String(current[f.key]??f.defaultValue??"")===String(o.value)?"selected":""}>${adminEscape(o.label)}</option>`).join("")}</select></label>`;
           return `<label style="display:block;margin:12px 0;font-weight:700">${f.label}<input name="${f.key}" type="${f.type||"text"}" value="${val}" ${f.required?"required":""} ${f.min!==undefined?`min="${f.min}"`:""} style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:11px;border:1px solid #ccd5df;border-radius:10px"></label>`;
         }).join("");
         wrap.innerHTML=`<form style="background:white;width:min(520px,100%);max-height:90vh;overflow:auto;border-radius:18px;padding:22px;box-shadow:0 20px 60px #0004"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><h2 style="margin:0">${title}</h2><button type="button" data-cancel style="font-size:26px;border:0;background:none;cursor:pointer">×</button></div>${inputs}<div style="display:flex;gap:10px;margin-top:18px"><button type="submit" class="btn btn-primary" style="flex:1">حفظ</button><button type="button" data-cancel class="btn btn-light">إلغاء</button></div></form>`;
@@ -203,6 +204,8 @@
           <div class="filters" id="adminTabs">
             <button class="filter active" data-admin-tab="stores">🏪 المتاجر</button>
             <button class="filter" data-admin-tab="products">📦 المنتجات</button>
+            <button class="filter" data-admin-tab="types">🏷️ أنواع المتاجر</button>
+            <button class="filter" data-admin-tab="groups">🗂️ مجموعات المنتجات</button>
             <button class="filter" data-admin-tab="orders">🛵 الطلبات</button>
             <button class="filter" data-admin-tab="profiles">👥 المستخدمون</button>
           </div>
@@ -254,39 +257,59 @@
             } else if(act==="toggle-store"){
               const active=action.dataset.active==="true";
               const {error}=await sb.from("stores").update({is_active:!active}).eq("id",id); if(error)throw error;
-            } else if(act==="add-product"){
-              const {data:stores,error:se}=await sb.from("stores").select("id,name").order("name"); if(se)throw se;
+            } else if(act==="add-product" || act==="edit-product"){
+              const {data:stores,error:se}=await sb.from("stores").select("id,name,category").order("name"); if(se)throw se;
               if(!stores?.length)throw new Error("أضف متجراً أولاً.");
-              const form=await openAdminForm("إضافة منتج جديد",[
-                {key:"storeId",label:"المتجر (اكتب اسمه كما يظهر بالقائمة)",required:true},
+              const {data:types,error:te}=await sb.from("store_types").select("name").order("name"); if(te)throw te;
+              const {data:groups,error:ge}=await sb.from("product_groups").select("name").order("name"); if(ge)throw ge;
+              let current={};
+              if(act==="edit-product"){
+                const {data:row,error:re}=await sb.from("products").select("id,store_id,name,store_type,group_name,category,image_url,price,stock,is_available").eq("id",id).single(); if(re)throw re;
+                current={...row,storeId:row.store_id,storeType:row.store_type||stores.find(x=>x.id===row.store_id)?.category||"سوبرماركت",groupName:row.group_name||row.category||"عام"};
+              } else current={storeId:stores[0].id,storeType:stores[0].category||types[0]?.name||"سوبرماركت",groupName:groups[0]?.name||"عام",price:"0",stock:"0"};
+              const storeOptions=stores.map(x=>({value:x.id,label:x.name}));
+              const typeOptions=(types||[]).map(x=>({value:x.name,label:x.name}));
+              const groupOptions=(groups||[]).map(x=>({value:x.name,label:x.name}));
+              if(!typeOptions.length)throw new Error("أضف نوع متجر أولاً من تبويب أنواع المتاجر.");
+              if(!groupOptions.length)throw new Error("أضف مجموعة منتجات أولاً من تبويب مجموعات المنتجات.");
+              const form=await openAdminForm(act==="add-product"?"إضافة منتج جديد":"تعديل المنتج",[
+                {key:"storeId",label:"المتجر",type:"select",options:storeOptions,required:true},
                 {key:"name",label:"اسم المنتج",required:true},
-                {key:"category",label:"نوع / فئة المنتج",required:true,defaultValue:"عام"},
-                {key:"price",label:"السعر",type:"number",min:0,required:true,defaultValue:"0"},
-                {key:"stock",label:"الكمية بالمخزون",type:"number",min:0,required:true,defaultValue:"0"},
+                {key:"storeType",label:"نوع المتجر",type:"select",options:typeOptions,required:true},
+                {key:"groupName",label:"مجموعة المنتج",type:"select",options:groupOptions,required:true},
+                {key:"price",label:"السعر",type:"number",min:0,required:true},
+                {key:"stock",label:"الكمية بالمخزون",type:"number",min:0,required:true},
                 {key:"image",label:"صورة المنتج",type:"image"}
-              ],{storeId:stores[0].name});
+              ],current);
               if(!form)return;
-              const store=stores.find(s=>s.name===form.storeId); if(!store)throw new Error("اختار اسم متجر مطابق تماماً للقائمة: "+stores.map(s=>s.name).join("، "));
               const price=Number(form.price),stock=Number(form.stock);
               if(!form.name)throw new Error("اسم المنتج مطلوب.");
               if(!Number.isFinite(price)||price<0)throw new Error("السعر غير صحيح.");
               if(!Number.isInteger(stock)||stock<0)throw new Error("الكمية يجب أن تكون عدداً صحيحاً غير سالب.");
-              const image_url=await uploadSelectedImage(sb,"products",form.image);
-              const {error}=await sb.from("products").insert({store_id:store.id,name:form.name,category:form.category||"عام",image_url:image_url||null,price,stock,is_available:true}); if(error)throw error;
-            } else if(act==="edit-product"){
-              const {data:row,error:re}=await sb.from("products").select("name,category,image_url,price,stock,is_available").eq("id",id).single(); if(re)throw re;
-              const name=prompt("اسم المنتج:",row.name); if(name===null)return;
-              const category=prompt("نوع / فئة المنتج:",row.category||"عام"); if(category===null)return;
-              const image_url=await chooseAndUploadImage(sb,"products",row.image_url||"");
-              const price=Number(prompt("السعر:",String(row.price))); if(!Number.isFinite(price)||price<0)throw new Error("السعر غير صحيح.");
-              const stock=Number(prompt("المخزون:",String(row.stock))); if(!Number.isInteger(stock)||stock<0)throw new Error("المخزون يجب أن يكون عدداً صحيحاً غير سالب.");
-              const {error}=await sb.from("products").update({name:name.trim(),category:category.trim()||"عام",image_url:image_url||null,price,stock}).eq("id",id); if(error)throw error;
+              const image_url=await uploadSelectedImage(sb,"products",form.image,current.image_url||"");
+              const payload={store_id:form.storeId,name:form.name,store_type:form.storeType,group_name:form.groupName,category:form.groupName,image_url:image_url||null,price,stock};
+              const result=act==="add-product"?await sb.from("products").insert({...payload,is_available:true}):await sb.from("products").update(payload).eq("id",id);
+              if(result.error)throw result.error;
             } else if(act==="toggle-product"){
               const active=action.dataset.active==="true";
               const {error}=await sb.from("products").update({is_available:!active}).eq("id",id); if(error)throw error;
             } else if(act==="delete-product"){
               if(!confirm("حذف المنتج نهائياً؟"))return;
               const {error}=await sb.from("products").delete().eq("id",id); if(error)throw error;
+            } else if(act==="add-type"){
+              const form=await openAdminForm("إضافة نوع متجر",[{key:"name",label:"اسم النوع",required:true}]);
+              if(!form)return; const name=form.name.trim(); if(!name)throw new Error("اسم النوع مطلوب.");
+              const {error}=await sb.from("store_types").insert({name}); if(error)throw error;
+            } else if(act==="delete-type"){
+              if(!confirm("حذف نوع المتجر؟ لن يُحذف أي متجر تلقائياً."))return;
+              const {error}=await sb.from("store_types").delete().eq("id",id); if(error)throw error;
+            } else if(act==="add-group"){
+              const form=await openAdminForm("إضافة مجموعة منتجات",[{key:"name",label:"اسم المجموعة",required:true}]);
+              if(!form)return; const name=form.name.trim(); if(!name)throw new Error("اسم المجموعة مطلوب.");
+              const {error}=await sb.from("product_groups").insert({name}); if(error)throw error;
+            } else if(act==="delete-group"){
+              if(!confirm("حذف مجموعة المنتجات؟ لن تُحذف المنتجات تلقائياً."))return;
+              const {error}=await sb.from("product_groups").delete().eq("id",id); if(error)throw error;
             } else if(act==="update-order"){
               const status=prompt("الحالة الجديدة (pending, confirmed, preparing, out_for_delivery, delivered, cancelled):",action.dataset.status||"pending"); if(!status)return;
               const allowed=["pending","confirmed","preparing","out_for_delivery","delivered","cancelled"];
@@ -326,10 +349,18 @@
           content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>إدارة المتاجر (${data.length})</h3><button class="btn btn-primary" data-action="add-store">＋ إضافة متجر</button></div>`+
           (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:620px"><thead><tr><th style="text-align:right;padding:10px">المتجر</th><th style="text-align:right;padding:10px">العنوان</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${r.image_url?`<img src="${adminEscape(r.image_url)}" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:10px;vertical-align:middle;margin-left:8px">`:""}${adminEscape(r.name)}<br><small>${adminEscape(r.category||"متاجر")} · ${adminEscape(r.description||"")}</small></td><td style="padding:10px">${adminEscape(r.address||"—")}</td><td style="padding:10px">${r.is_active?"نشط":"متوقف"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-store" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-store" data-id="${adminEscape(r.id)}" data-active="${r.is_active}">${r.is_active?"إيقاف":"تفعيل"}</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في متاجر بعد. اضغط إضافة متجر.</p>`);
         }else if(tab==="products"){
-          ({data,error}=await sb.from("products").select("id,store_id,name,category,image_url,price,stock,is_available,stores(name)").order("created_at",{ascending:false}));
+          ({data,error}=await sb.from("products").select("id,store_id,name,store_type,group_name,category,image_url,price,stock,is_available,stores(name)").order("created_at",{ascending:false}));
           if(error)throw error;
           content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>إدارة المنتجات (${data.length})</h3><button class="btn btn-primary" data-action="add-product">＋ إضافة منتج</button></div>`+
-          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:650px"><thead><tr><th style="text-align:right;padding:10px">المنتج</th><th style="text-align:right;padding:10px">المتجر</th><th style="padding:10px">السعر</th><th style="padding:10px">المخزون</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${r.image_url?`<img src="${adminEscape(r.image_url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:9px;vertical-align:middle;margin-left:8px">`:""}${adminEscape(r.name)}<br><small>${adminEscape(r.category||"عام")}</small></td><td style="padding:10px">${adminEscape(r.stores?.name||"—")}</td><td style="padding:10px">${money(r.price)}</td><td style="padding:10px">${r.stock}</td><td style="padding:10px">${r.is_available?"متاح":"غير متاح"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-product" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-product" data-id="${adminEscape(r.id)}" data-active="${r.is_available}">${r.is_available?"إخفاء":"إظهار"}</button> <button class="btn btn-light" data-action="delete-product" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في منتجات بعد. اضغط إضافة منتج.</p>`);
+          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:650px"><thead><tr><th style="text-align:right;padding:10px">المنتج</th><th style="text-align:right;padding:10px">المتجر</th><th style="padding:10px">السعر</th><th style="padding:10px">المخزون</th><th style="padding:10px">الحالة</th><th style="padding:10px">إجراءات</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${r.image_url?`<img src="${adminEscape(r.image_url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:9px;vertical-align:middle;margin-left:8px">`:""}${adminEscape(r.name)}<br><small>${adminEscape(r.store_type||"—")} · ${adminEscape(r.group_name||r.category||"عام")}</small></td><td style="padding:10px">${adminEscape(r.stores?.name||"—")}</td><td style="padding:10px">${money(r.price)}</td><td style="padding:10px">${r.stock}</td><td style="padding:10px">${r.is_available?"متاح":"غير متاح"}</td><td style="padding:10px;white-space:nowrap"><button class="btn btn-light" data-action="edit-product" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="toggle-product" data-id="${adminEscape(r.id)}" data-active="${r.is_available}">${r.is_available?"إخفاء":"إظهار"}</button> <button class="btn btn-light" data-action="delete-product" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في منتجات بعد. اضغط إضافة منتج.</p>`);
+        }else if(tab==="types"){
+          ({data,error}=await sb.from("store_types").select("id,name,created_at").order("name")); if(error)throw error;
+          content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>أنواع المتاجر (${data.length})</h3><button class="btn btn-primary" data-action="add-type">＋ إضافة نوع</button></div>`+
+          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:right;padding:10px">النوع</th><th style="padding:10px">إجراء</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.name)}</td><td style="padding:10px"><button class="btn btn-light" data-action="delete-type" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في أنواع. أضف سوبرماركت أو مطاعم أو مخابز أو نوع جديد.</p>`);
+        }else if(tab==="groups"){
+          ({data,error}=await sb.from("product_groups").select("id,name,created_at").order("name")); if(error)throw error;
+          content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>مجموعات المنتجات (${data.length})</h3><button class="btn btn-primary" data-action="add-group">＋ إضافة مجموعة</button></div>`+
+          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:right;padding:10px">المجموعة</th><th style="padding:10px">إجراء</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.name)}</td><td style="padding:10px"><button class="btn btn-light" data-action="delete-group" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في مجموعات. أضف مشروبات، ألبان، منظفات أو أي مجموعة تحتاجها.</p>`);
         }else if(tab==="orders"){
           ({data,error}=await sb.from("orders").select("id,customer_name,customer_phone,delivery_address,payment_method,total,status,created_at,store_id").order("created_at",{ascending:false}).limit(100));
           if(error)throw error;

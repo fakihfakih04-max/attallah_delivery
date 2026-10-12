@@ -161,6 +161,34 @@
       const {data}=sb.storage.from("attallah-images").getPublicUrl(path);
       return data.publicUrl;
     }
+    function openAdminForm(title, fields, current={}){
+      return new Promise(resolve=>{
+        const wrap=document.createElement("div");
+        wrap.style.cssText="position:fixed;inset:0;z-index:10050;background:#0009;display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl";
+        const inputs=fields.map(f=>{
+          const val=adminEscape(current[f.key] ?? f.defaultValue ?? "");
+          if(f.type==="textarea") return `<label style="display:block;margin:12px 0;font-weight:700">${f.label}<textarea name="${f.key}" ${f.required?"required":""} rows="3" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:11px;border:1px solid #ccd5df;border-radius:10px">${val}</textarea></label>`;
+          if(f.type==="image") return `<div style="margin:14px 0"><label style="font-weight:700;display:block">${f.label}</label><input name="${f.key}" type="file" accept="image/*" style="display:block;width:100%;margin-top:8px"><small style="color:#667085">اختار صورة من الهاتف أو اللابتوب (حتى 5 MB)</small>${current[f.key]?`<img src="${adminEscape(current[f.key])}" style="display:block;width:90px;height:90px;object-fit:cover;border-radius:10px;margin-top:8px">`:""}</div>`;
+          return `<label style="display:block;margin:12px 0;font-weight:700">${f.label}<input name="${f.key}" type="${f.type||"text"}" value="${val}" ${f.required?"required":""} ${f.min!==undefined?`min="${f.min}"`:""} style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:11px;border:1px solid #ccd5df;border-radius:10px"></label>`;
+        }).join("");
+        wrap.innerHTML=`<form style="background:white;width:min(520px,100%);max-height:90vh;overflow:auto;border-radius:18px;padding:22px;box-shadow:0 20px 60px #0004"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><h2 style="margin:0">${title}</h2><button type="button" data-cancel style="font-size:26px;border:0;background:none;cursor:pointer">×</button></div>${inputs}<div style="display:flex;gap:10px;margin-top:18px"><button type="submit" class="btn btn-primary" style="flex:1">حفظ</button><button type="button" data-cancel class="btn btn-light">إلغاء</button></div></form>`;
+        const finish=value=>{wrap.remove();resolve(value)};
+        wrap.querySelectorAll("[data-cancel]").forEach(b=>b.addEventListener("click",()=>finish(null)));
+        wrap.addEventListener("click",e=>{if(e.target===wrap)finish(null)});
+        wrap.querySelector("form").addEventListener("submit",e=>{e.preventDefault();const form=e.currentTarget;const data={};for(const f of fields){const el=form.elements.namedItem(f.key);data[f.key]=f.type==="image"?(el.files&&el.files[0]||null):el.value.trim()}finish(data)});
+        document.body.appendChild(wrap);
+      });
+    }
+    async function uploadSelectedImage(sb,folder,file,currentUrl=""){
+      if(!file) return currentUrl||"";
+      if(!file.type.startsWith("image/")) throw new Error("اختار ملف صورة فقط.");
+      if(file.size>5*1024*1024) throw new Error("حجم الصورة يجب أن يكون أقل من 5 ميغابايت.");
+      const ext=(file.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"")||"jpg";
+      const path=`${folder}/${Date.now()}-${Math.random().toString(36).slice(2,9)}.${ext}`;
+      const {error}=await sb.storage.from("attallah-images").upload(path,file,{cacheControl:"3600",upsert:false,contentType:file.type});
+      if(error) throw new Error("فشل رفع الصورة. تأكد من إعداد مساحة attallah-images. "+error.message);
+      return sb.storage.from("attallah-images").getPublicUrl(path).data.publicUrl;
+    }
     function showAdminDashboard(profile){
       let panel = document.getElementById("adminDashboardModal");
       if(!panel){
@@ -203,12 +231,17 @@
           const sb=getSupabaseClient();
           try{
             if(act==="add-store"){
-              const name=prompt("اسم المتجر:"); if(!name||!name.trim())return;
-              const description=prompt("وصف المتجر (اختياري):")||"";
-              const address=prompt("عنوان المتجر (اختياري):")||"";
-              const category=prompt("نوع المتجر (مثلاً: سوبرماركت، مطعم، مخبز):")||"متاجر";
-              const image_url=await chooseAndUploadImage(sb,"stores");
-              const {error}=await sb.from("stores").insert({name:name.trim(),description:description.trim()||null,address:address.trim()||null,category:category.trim()||"متاجر",image_url:image_url||null,is_active:true});
+              const form=await openAdminForm("إضافة متجر جديد",[
+                {key:"name",label:"اسم المتجر",required:true},
+                {key:"category",label:"نوع المتجر",required:true,defaultValue:"سوبرماركت"},
+                {key:"description",label:"وصف المتجر",type:"textarea"},
+                {key:"address",label:"العنوان"},
+                {key:"image",label:"صورة المتجر",type:"image"}
+              ]);
+              if(!form)return;
+              if(!form.name)throw new Error("اسم المتجر مطلوب.");
+              const image_url=await uploadSelectedImage(sb,"stores",form.image);
+              const {error}=await sb.from("stores").insert({name:form.name,description:form.description||null,address:form.address||null,category:form.category||"متاجر",image_url:image_url||null,is_active:true});
               if(error)throw error;
             } else if(act==="edit-store"){
               const {data:row,error:readErr}=await sb.from("stores").select("name,description,address,image_url,category,is_active").eq("id",id).single(); if(readErr)throw readErr;
@@ -224,15 +257,22 @@
             } else if(act==="add-product"){
               const {data:stores,error:se}=await sb.from("stores").select("id,name").order("name"); if(se)throw se;
               if(!stores?.length)throw new Error("أضف متجراً أولاً.");
-              const choices=stores.map(s=>`${s.id} — ${s.name}`).join("\n");
-              const storeId=prompt("انسخ معرّف المتجر المطلوب من القائمة:\n"+choices); if(!storeId)return;
-              const store=stores.find(s=>s.id===storeId.trim()); if(!store)throw new Error("معرّف المتجر غير موجود بالقائمة.");
-              const name=prompt("اسم المنتج:"); if(!name||!name.trim())return;
-              const category=prompt("نوع / فئة المنتج:")||"عام";
-              const image_url=await chooseAndUploadImage(sb,"products");
-              const price=Number(prompt("السعر:", "0")); if(!Number.isFinite(price)||price<0)throw new Error("السعر غير صحيح.");
-              const stock=Number(prompt("الكمية بالمخزون:", "0")); if(!Number.isInteger(stock)||stock<0)throw new Error("الكمية يجب أن تكون عدداً صحيحاً غير سالب.");
-              const {error}=await sb.from("products").insert({store_id:store.id,name:name.trim(),category:category.trim()||"عام",image_url:image_url||null,price,stock,is_available:true}); if(error)throw error;
+              const form=await openAdminForm("إضافة منتج جديد",[
+                {key:"storeId",label:"المتجر (اكتب اسمه كما يظهر بالقائمة)",required:true},
+                {key:"name",label:"اسم المنتج",required:true},
+                {key:"category",label:"نوع / فئة المنتج",required:true,defaultValue:"عام"},
+                {key:"price",label:"السعر",type:"number",min:0,required:true,defaultValue:"0"},
+                {key:"stock",label:"الكمية بالمخزون",type:"number",min:0,required:true,defaultValue:"0"},
+                {key:"image",label:"صورة المنتج",type:"image"}
+              ],{storeId:stores[0].name});
+              if(!form)return;
+              const store=stores.find(s=>s.name===form.storeId); if(!store)throw new Error("اختار اسم متجر مطابق تماماً للقائمة: "+stores.map(s=>s.name).join("، "));
+              const price=Number(form.price),stock=Number(form.stock);
+              if(!form.name)throw new Error("اسم المنتج مطلوب.");
+              if(!Number.isFinite(price)||price<0)throw new Error("السعر غير صحيح.");
+              if(!Number.isInteger(stock)||stock<0)throw new Error("الكمية يجب أن تكون عدداً صحيحاً غير سالب.");
+              const image_url=await uploadSelectedImage(sb,"products",form.image);
+              const {error}=await sb.from("products").insert({store_id:store.id,name:form.name,category:form.category||"عام",image_url:image_url||null,price,stock,is_available:true}); if(error)throw error;
             } else if(act==="edit-product"){
               const {data:row,error:re}=await sb.from("products").select("name,category,image_url,price,stock,is_available").eq("id",id).single(); if(re)throw re;
               const name=prompt("اسم المنتج:",row.name); if(name===null)return;

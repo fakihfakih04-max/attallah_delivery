@@ -300,6 +300,11 @@
               const form=await openAdminForm("إضافة نوع متجر",[{key:"name",label:"اسم النوع",required:true}]);
               if(!form)return; const name=form.name.trim(); if(!name)throw new Error("اسم النوع مطلوب.");
               const {error}=await sb.from("store_types").insert({name}); if(error)throw error;
+            } else if(act==="edit-type"){
+              const {data:row,error:re}=await sb.from("store_types").select("id,name").eq("id",id).single(); if(re)throw re;
+              const form=await openAdminForm("تعديل نوع المتجر",[{key:"name",label:"اسم النوع",required:true}],row); if(!form)return;
+              if(!form.name.trim())throw new Error("اسم النوع مطلوب.");
+              const {error}=await sb.from("store_types").update({name:form.name.trim()}).eq("id",id); if(error)throw error;
             } else if(act==="delete-type"){
               if(!confirm("حذف نوع المتجر؟ لن يُحذف أي متجر تلقائياً."))return;
               const {error}=await sb.from("store_types").delete().eq("id",id); if(error)throw error;
@@ -307,6 +312,11 @@
               const form=await openAdminForm("إضافة مجموعة منتجات",[{key:"name",label:"اسم المجموعة",required:true}]);
               if(!form)return; const name=form.name.trim(); if(!name)throw new Error("اسم المجموعة مطلوب.");
               const {error}=await sb.from("product_groups").insert({name}); if(error)throw error;
+            } else if(act==="edit-group"){
+              const {data:row,error:re}=await sb.from("product_groups").select("id,name").eq("id",id).single(); if(re)throw re;
+              const form=await openAdminForm("تعديل مجموعة المنتجات",[{key:"name",label:"اسم المجموعة",required:true}],row); if(!form)return;
+              if(!form.name.trim())throw new Error("اسم المجموعة مطلوب.");
+              const {error}=await sb.from("product_groups").update({name:form.name.trim()}).eq("id",id); if(error)throw error;
             } else if(act==="delete-group"){
               if(!confirm("حذف مجموعة المنتجات؟ لن تُحذف المنتجات تلقائياً."))return;
               const {error}=await sb.from("product_groups").delete().eq("id",id); if(error)throw error;
@@ -356,11 +366,11 @@
         }else if(tab==="types"){
           ({data,error}=await sb.from("store_types").select("id,name,created_at").order("name")); if(error)throw error;
           content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>أنواع المتاجر (${data.length})</h3><button class="btn btn-primary" data-action="add-type">＋ إضافة نوع</button></div>`+
-          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:right;padding:10px">النوع</th><th style="padding:10px">إجراء</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.name)}</td><td style="padding:10px"><button class="btn btn-light" data-action="delete-type" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في أنواع. أضف سوبرماركت أو مطاعم أو مخابز أو نوع جديد.</p>`);
+          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:right;padding:10px">النوع</th><th style="padding:10px">إجراء</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.name)}</td><td style="padding:10px"><button class="btn btn-light" data-action="edit-type" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="delete-type" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في أنواع. أضف سوبرماركت أو مطاعم أو مخابز أو نوع جديد.</p>`);
         }else if(tab==="groups"){
           ({data,error}=await sb.from("product_groups").select("id,name,created_at").order("name")); if(error)throw error;
           content.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h3>مجموعات المنتجات (${data.length})</h3><button class="btn btn-primary" data-action="add-group">＋ إضافة مجموعة</button></div>`+
-          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:right;padding:10px">المجموعة</th><th style="padding:10px">إجراء</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.name)}</td><td style="padding:10px"><button class="btn btn-light" data-action="delete-group" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في مجموعات. أضف مشروبات، ألبان، منظفات أو أي مجموعة تحتاجها.</p>`);
+          (data.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:right;padding:10px">المجموعة</th><th style="padding:10px">إجراء</th></tr></thead><tbody>${data.map(r=>`<tr style="border-top:1px solid #eee"><td style="padding:10px">${adminEscape(r.name)}</td><td style="padding:10px"><button class="btn btn-light" data-action="edit-group" data-id="${adminEscape(r.id)}">تعديل</button> <button class="btn btn-light" data-action="delete-group" data-id="${adminEscape(r.id)}">حذف</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">ما في مجموعات. أضف مشروبات، ألبان، منظفات أو أي مجموعة تحتاجها.</p>`);
         }else if(tab==="orders"){
           ({data,error}=await sb.from("orders").select("id,customer_name,customer_phone,delivery_address,payment_method,total,status,created_at,store_id").order("created_at",{ascending:false}).limit(100));
           if(error)throw error;

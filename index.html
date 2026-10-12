@@ -142,6 +142,25 @@
     function adminEscape(value){
       return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
     }
+    async function chooseAndUploadImage(sb, folder, currentUrl=""){
+      const replace=confirm(currentUrl ? "تريد تبدّل الصورة الحالية؟ اضغط موافق لاختيار صورة جديدة، أو إلغاء للاحتفاظ بالحالية." : "اختيار صورة من الهاتف أو اللابتوب؟");
+      if(!replace) return currentUrl || "";
+      const file=await new Promise((resolve)=>{
+        const input=document.createElement("input"); input.type="file"; input.accept="image/*"; input.style.display="none";
+        document.body.appendChild(input);
+        input.addEventListener("change",()=>{const selected=input.files&&input.files[0];input.remove();resolve(selected||null);},{once:true});
+        input.click();
+      });
+      if(!file) return currentUrl || "";
+      if(!file.type.startsWith("image/")) throw new Error("اختار ملف صورة فقط.");
+      if(file.size>5*1024*1024) throw new Error("حجم الصورة يجب أن يكون أقل من 5 ميغابايت.");
+      const ext=(file.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"")||"jpg";
+      const path=`${folder}/${Date.now()}-${Math.random().toString(36).slice(2,9)}.${ext}`;
+      const {error:uploadError}=await sb.storage.from("attallah-images").upload(path,file,{cacheControl:"3600",upsert:false,contentType:file.type});
+      if(uploadError) throw new Error("فشل رفع الصورة. تأكد من إنشاء bucket attallah-images وتطبيق SQL المرفق. " + uploadError.message);
+      const {data}=sb.storage.from("attallah-images").getPublicUrl(path);
+      return data.publicUrl;
+    }
     function showAdminDashboard(profile){
       let panel = document.getElementById("adminDashboardModal");
       if(!panel){
@@ -188,8 +207,8 @@
               const description=prompt("وصف المتجر (اختياري):")||"";
               const address=prompt("عنوان المتجر (اختياري):")||"";
               const category=prompt("نوع المتجر (مثلاً: سوبرماركت، مطعم، مخبز):")||"متاجر";
-              const image_url=prompt("رابط صورة المتجر (https://):")||"";
-              const {error}=await sb.from("stores").insert({name:name.trim(),description:description.trim()||null,address:address.trim()||null,category:category.trim()||"متاجر",image_url:image_url.trim()||null,is_active:true});
+              const image_url=await chooseAndUploadImage(sb,"stores");
+              const {error}=await sb.from("stores").insert({name:name.trim(),description:description.trim()||null,address:address.trim()||null,category:category.trim()||"متاجر",image_url:image_url||null,is_active:true});
               if(error)throw error;
             } else if(act==="edit-store"){
               const {data:row,error:readErr}=await sb.from("stores").select("name,description,address,image_url,category,is_active").eq("id",id).single(); if(readErr)throw readErr;
@@ -197,8 +216,8 @@
               const description=prompt("وصف المتجر:",row.description||""); if(description===null)return;
               const address=prompt("العنوان:",row.address||""); if(address===null)return;
               const category=prompt("نوع المتجر:",row.category||"متاجر"); if(category===null)return;
-              const image_url=prompt("رابط صورة المتجر (https://):",row.image_url||""); if(image_url===null)return;
-              const {error}=await sb.from("stores").update({name:name.trim(),description:description.trim()||null,address:address.trim()||null,category:category.trim()||"متاجر",image_url:image_url.trim()||null}).eq("id",id); if(error)throw error;
+              const image_url=await chooseAndUploadImage(sb,"stores",row.image_url||"");
+              const {error}=await sb.from("stores").update({name:name.trim(),description:description.trim()||null,address:address.trim()||null,category:category.trim()||"متاجر",image_url:image_url||null}).eq("id",id); if(error)throw error;
             } else if(act==="toggle-store"){
               const active=action.dataset.active==="true";
               const {error}=await sb.from("stores").update({is_active:!active}).eq("id",id); if(error)throw error;
@@ -210,18 +229,18 @@
               const store=stores.find(s=>s.id===storeId.trim()); if(!store)throw new Error("معرّف المتجر غير موجود بالقائمة.");
               const name=prompt("اسم المنتج:"); if(!name||!name.trim())return;
               const category=prompt("نوع / فئة المنتج:")||"عام";
-              const image_url=prompt("رابط صورة المنتج (https://):")||"";
+              const image_url=await chooseAndUploadImage(sb,"products");
               const price=Number(prompt("السعر:", "0")); if(!Number.isFinite(price)||price<0)throw new Error("السعر غير صحيح.");
               const stock=Number(prompt("الكمية بالمخزون:", "0")); if(!Number.isInteger(stock)||stock<0)throw new Error("الكمية يجب أن تكون عدداً صحيحاً غير سالب.");
-              const {error}=await sb.from("products").insert({store_id:store.id,name:name.trim(),category:category.trim()||"عام",image_url:image_url.trim()||null,price,stock,is_available:true}); if(error)throw error;
+              const {error}=await sb.from("products").insert({store_id:store.id,name:name.trim(),category:category.trim()||"عام",image_url:image_url||null,price,stock,is_available:true}); if(error)throw error;
             } else if(act==="edit-product"){
               const {data:row,error:re}=await sb.from("products").select("name,category,image_url,price,stock,is_available").eq("id",id).single(); if(re)throw re;
               const name=prompt("اسم المنتج:",row.name); if(name===null)return;
               const category=prompt("نوع / فئة المنتج:",row.category||"عام"); if(category===null)return;
-              const image_url=prompt("رابط صورة المنتج:",row.image_url||""); if(image_url===null)return;
+              const image_url=await chooseAndUploadImage(sb,"products",row.image_url||"");
               const price=Number(prompt("السعر:",String(row.price))); if(!Number.isFinite(price)||price<0)throw new Error("السعر غير صحيح.");
               const stock=Number(prompt("المخزون:",String(row.stock))); if(!Number.isInteger(stock)||stock<0)throw new Error("المخزون يجب أن يكون عدداً صحيحاً غير سالب.");
-              const {error}=await sb.from("products").update({name:name.trim(),category:category.trim()||"عام",image_url:image_url.trim()||null,price,stock}).eq("id",id); if(error)throw error;
+              const {error}=await sb.from("products").update({name:name.trim(),category:category.trim()||"عام",image_url:image_url||null,price,stock}).eq("id",id); if(error)throw error;
             } else if(act==="toggle-product"){
               const active=action.dataset.active==="true";
               const {error}=await sb.from("products").update({is_available:!active}).eq("id",id); if(error)throw error;

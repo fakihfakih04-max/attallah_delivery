@@ -87,7 +87,11 @@
   <div class="modal-backdrop" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginTitle"><div class="modal" style="max-width:430px"><div class="modal-head"><h2 id="loginTitle">دخول الإدارة</h2><button class="close" data-close="loginModal" aria-label="إغلاق">×</button></div><div class="notice">واجهة أولية فقط. تسجيل الدخول الحقيقي والصلاحيات يحتاجان إلى Backend آمن.</div><form id="loginForm" class="checkout-form" style="grid-template-columns:1fr"><label class="field">البريد الإلكتروني<input name="email" type="email" required placeholder="admin@example.com"></label><label class="field">كلمة المرور<input name="password" type="password" required placeholder="كلمة المرور"></label><button class="btn btn-primary" type="submit">متابعة</button></form></div></div>
   <div class="modal-backdrop" id="trackModal" role="dialog" aria-modal="true" aria-labelledby="trackTitle"><div class="modal" style="max-width:430px"><div class="modal-head"><h2 id="trackTitle">تتبّع طلبك</h2><button class="close" data-close="trackModal" aria-label="إغلاق">×</button></div><form id="trackForm" class="checkout-form" style="grid-template-columns:1fr"><label class="field">رقم الطلب<input name="orderId" required placeholder="مثال: AT-10025"></label><button class="btn btn-primary" type="submit">بحث عن الطلب</button></form><p style="font-size:11px;color:#8a959d">تتبّع الطلبات سيعمل بعد ربط النظام بالخادم.</p></div></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
+    // Public browser settings only. Never put a service_role key in this file.
+    const SUPABASE_URL = "https://xeuiiqghpjglxrixlwaq.supabase.co";
+    const SUPABASE_ANON_KEY = "PASTE_YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY_HERE";
     const stores = [
       {id:1,name:"سوبرماركت المدينة",category:"سوبرماركت",desc:"كل احتياجات البيت اليومية",emoji:"🛒",rating:"4.8",time:"20–35 دقيقة",fee:"رسوم التوصيل تُحدد لاحقاً",color:"linear-gradient(135deg,#e2f5e7,#bfe8ce)",badge:"الأكثر طلباً",products:[["حليب طازج","🥛",1.5],["خبز عربي","🥖",0.8],["بيض طازج","🥚",2.4],["أرز","🍚",2.2],["بندورة","🍅",1.1],["موز","🍌",1.2]]},
       {id:2,name:"مطعم البيت الشامي",category:"مطاعم",desc:"أطباق شرقية بطعم البيت",emoji:"🍲",rating:"4.7",time:"30–45 دقيقة",fee:"رسوم التوصيل تُحدد لاحقاً",color:"linear-gradient(135deg,#ffe5d1,#ffc18f)",badge:"طازج يومياً",products:[["شاورما دجاج","🌯",4.5],["وجبة مشاوي","🍢",9.5],["فتوش","🥗",3.2],["حمص","🧆",2.5],["بطاطا مقلية","🍟",2.0],["مناقيش","🫓",1.8]]},
@@ -123,7 +127,45 @@
     $("#trackBtn").addEventListener("click",()=>openModal("trackModal"));$("#orderHelpBtn").addEventListener("click",()=>openModal("trackModal"));
     $("#partnerBtn").addEventListener("click",()=>showToast("قريباً: التسجيل للمتاجر الشريكة."));
     $("#checkoutForm").addEventListener("submit",e=>{e.preventDefault();if(!cart.length){closeModal("checkoutModal");showToast("السلة فارغة.");return}const data=Object.fromEntries(new FormData(e.target).entries());const order={demoId:"AT-DEMO-"+Math.floor(10000+Math.random()*89999),items:cart.map(x=>({...x})),total:cart.reduce((n,x)=>n+x.price*x.qty,0),customer:data};closeModal("checkoutModal");cart=[];updateCart();e.target.reset();showToast("تمت تجربة الطلب بنجاح. لا يوجد إرسال فعلي قبل ربط الخادم.");console.info("Atallah demo order (not sent to a server):",order)});
-    $("#loginForm").addEventListener("submit",e=>{e.preventDefault();closeModal("loginModal");e.target.reset();showToast("تسجيل الدخول غير مفعّل بعد. يجب ربطه بخادم آمن.");});
+    let supabaseClient = null;
+    function getSupabaseClient(){
+      if(!window.supabase || !window.supabase.createClient) throw new Error("تعذّر تحميل مكتبة تسجيل الدخول. تأكّد من اتصال الإنترنت.");
+      if(!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes("PASTE_YOUR_")) throw new Error("باقي نحطّ مفتاح Publishable/anon من Supabase: Project Settings → API Keys.");
+      if(!supabaseClient) supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      return supabaseClient;
+    }
+    function showAdminDashboard(profile){
+      let panel = document.getElementById("adminDashboardModal");
+      if(!panel){
+        panel=document.createElement("div"); panel.id="adminDashboardModal"; panel.className="modal-backdrop"; panel.setAttribute("role","dialog"); panel.setAttribute("aria-modal","true");
+        panel.innerHTML=`<div class="modal"><div class="modal-head"><h2>لوحة إدارة عطالله</h2><button class="close" id="adminCloseBtn" aria-label="إغلاق">×</button></div><p id="adminWelcome" style="color:#73808a"></p><div class="product-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"><div class="product"><div class="product-emoji">👥</div><h4>المستخدمون والصلاحيات</h4><small>إدارة حسابات النظام — قيد التجهيز</small></div><div class="product"><div class="product-emoji">🏪</div><h4>المتاجر</h4><small>إدارة المتاجر — قيد التجهيز</small></div><div class="product"><div class="product-emoji">📦</div><h4>المنتجات</h4><small>إدارة المنتجات — قيد التجهيز</small></div><div class="product"><div class="product-emoji">🛵</div><h4>الطلبات</h4><small>متابعة الطلبات — قيد التجهيز</small></div></div><div class="notice">تم التحقق من تسجيل الدخول ودور الحساب من قاعدة البيانات. أقسام الإدارة ستحتاج سياسات RLS مخصصة قبل تفعيل عمليات الإضافة والتعديل والحذف.</div><button class="btn btn-primary" id="adminSignOutBtn">تسجيل الخروج</button></div>`;
+        document.body.appendChild(panel);
+        panel.querySelector("#adminCloseBtn").addEventListener("click",()=>closeModal("adminDashboardModal"));
+        panel.addEventListener("click",e=>{if(e.target===panel)closeModal("adminDashboardModal")});
+        panel.querySelector("#adminSignOutBtn").addEventListener("click",async()=>{try{const sb=getSupabaseClient();await sb.auth.signOut();closeModal("adminDashboardModal");showToast("تم تسجيل الخروج.");}catch(err){showToast(err.message||"تعذّر تسجيل الخروج.")}});
+      }
+      panel.querySelector("#adminWelcome").textContent=`أهلاً ${profile.full_name || "بالمدير"} — الدور: ${profile.role}`;
+      openModal("adminDashboardModal");
+    }
+    $("#loginForm").addEventListener("submit",async e=>{
+      e.preventDefault(); const form=e.currentTarget; const submit=form.querySelector('button[type="submit"]');
+      const email=form.elements.email.value.trim(); const password=form.elements.password.value;
+      submit.disabled=true; submit.textContent="جارٍ التحقق…";
+      try{
+        const sb=getSupabaseClient();
+        const {data:authData,error:authError}=await sb.auth.signInWithPassword({email,password});
+        if(authError) throw authError;
+        const user=authData.user;
+        const {data:profile,error:profileError}=await sb.from("profiles").select("id,full_name,role,is_active").eq("id",user.id).maybeSingle();
+        if(profileError) throw profileError;
+        if(!profile || !profile.is_active || profile.role!=="admin"){
+          await sb.auth.signOut();
+          throw new Error("هذا الحساب ليس لديه صلاحية المدير أو أنه غير مفعّل. راجع profiles في Supabase.");
+        }
+        closeModal("loginModal"); form.reset(); showToast("تم تسجيل الدخول بنجاح."); showAdminDashboard(profile);
+      }catch(err){showToast(err.message || "فشل تسجيل الدخول.");}
+      finally{submit.disabled=false;submit.textContent="متابعة";}
+    });
     $("#trackForm").addEventListener("submit",e=>{e.preventDefault();closeModal("trackModal");e.target.reset();showToast("التتبع غير متصل بعد بقاعدة الطلبات.");});
     $("#year").textContent=new Date().getFullYear();renderStores();updateCart();
   </script>
